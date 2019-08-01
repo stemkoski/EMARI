@@ -1,0 +1,845 @@
+<html>
+
+<head>
+
+    <meta charset="utf-8"/>
+    <title>Test</title>
+
+    <script src="js/three.min.105.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    
+    <script src="js/jquery-3.3.1.js"></script>
+	<link rel="stylesheet" href="js/jquery-ui.css">
+	<script src="js/jquery-ui.js"></script>
+    
+    <script src="js/spectrum.js"></script>
+	<link rel="stylesheet" href="js/spectrum.css">
+    
+    <script src="js/polyhedra.js"></script>
+	
+    <style>
+    
+    /* easier to read text input */
+    input[type="text"]
+    {
+        font-size: 16px;
+        font-weight: bold;
+        font-family: Courier New, monospace;
+    }
+    
+    .ui-widget textarea
+    {
+        font-size: 16px;
+        font-weight: bold;
+        font-family: Courier New, monospace;
+    }
+    
+    .masterTable
+    {
+        border 2px solid #CCCCCC;
+    }
+    
+    .curveData
+    {
+        border: 2px solid #005337;
+        margin: 8px;
+        background-color: #FFFFEE;
+        font-weight: bold;
+        font-family: Courier;
+        padding: 8px;
+        white-space: nowrap;
+    }
+
+    .left   { text-align: left;   }
+    .center { text-align: center; }
+    .right  { text-align: right;  }
+    
+    td
+    {
+        border: 0px solid #FF0000;
+        
+    }
+    </style>
+
+</head>
+
+<body>
+
+<!-- HTML Components ================================================================================== -->
+
+<center>
+
+<h1>EMARI</h1>
+<i>Exploratory Mathematical and Artistic Rendering Interface</i>
+
+<br><br>
+
+<div id="renderArea" style="display: inline-block; border: 2px solid blue"></div>
+
+<table cellpadding="4">
+<tr>
+    <td>Image size: </td>
+    <td><button id="smallImageButton">Small</button></td>
+    <td><button id="largeImageButton">Large</button></td>
+    <td><button id="saveButton">Save Image</button></td>
+</tr>
+</table>
+<table cellpadding="4">
+<tr>
+    <td><button id="addCurveButton">Add Parametric Curve</button></td>
+    <td><button id="addPatternButton">Add Discrete Pattern</button></td>
+</tr>
+</table>
+
+
+<!-- Scrolling area contains all settings/parameters 
+     so that the user may keep both the 3D scene viewport
+     and the data entry fields in view at the same time -->
+
+<div style="background-color: #EEEEFF; height:500px; border:2px solid #000000; overflow:auto;">
+
+<h3>Scene Image Settings</h3>
+
+<table cellspacing="8">
+<tr>
+    <td class="center"><button id="toggleGrid">Toggle Grid Visibility</button></td>
+    <td class="center"><button id="toggleAxes">Toggle <b><span style="color: red">X</span><span style="color: green">Y</span><span style="color: blue">Z</span></b> Axis Visibility</button></td>
+    <td class="center"><button id="toggleLights">Toggle Lighting Effects</button></td>
+</tr>
+<tr>
+    <td class="right">Sphere Color: <input type="text" id="sphereColor" /></td>
+    <td class="center">Sphere Opacity: <div id="sphereOpacity" style="width: 100px; display: inline-block; margin-left:8px; margin-right:12px;"></div></td>
+    <td class="center"><button id="toggleSphere">Toggle Sphere Visibility</button></td>
+</tr>
+<tr>
+    <td class="right">Background Color: <input type="text" id="backgroundColor" /></td>
+    <td></td>
+    <td class="center"><button id="resetCamera">Reset Camera Position</button></td>
+</tr>
+</table>
+
+<h3>Parametric Curves and Discrete Patterns</h3>
+
+<table id="curveTable"></table>
+
+<br/><br/><br/><br/><br/><br/><br/><br/>
+<br/><br/><br/><br/><br/><br/><br/><br/>
+<br/><br/><br/><br/><br/><br/><br/><br/>
+
+</div>
+
+</center>
+
+<!-- ================================== scripts ======================================= -->
+
+<script>
+
+// renderer related code ====================================================================
+
+$("#smallImageButton").click( function() { 
+    renderer.setSize(400, 300);
+});
+
+$("#largeImageButton").click( function() { 
+    renderer.setSize(800, 600);
+});
+
+$("#saveButton").click( function() { 
+    let canvas = $("#renderArea").find("canvas")[0];
+    let dataURL = canvas.toDataURL('image/png');
+    
+    let link = document.createElement("a");
+    document.body.appendChild(link);
+    link.download = "image.png";
+    link.href = dataURL;
+    link.click();
+    document.body.removeChild(link); 
+});
+
+
+// Three.js scene setup ====================================================================
+
+var camera, scene, renderer, controls;
+var gridHelper, axesHelper, sphereMaterial;
+var softAmbientLight, hardAmbientLight, directionalLight;
+
+initialize();
+animate();
+
+function initialize() 
+{
+    renderer = new THREE.WebGLRenderer( { antialias: true, preserveDrawingBuffer: true } );
+
+    // add render area to pre-existing div element
+	container = document.getElementById( "renderArea" );
+	renderer.setSize( 400,300 );
+	container.appendChild( renderer.domElement );
+    
+	scene = new THREE.Scene();
+    
+    softAmbientLight = new THREE.AmbientLight( 0x888888 );
+	scene.add( softAmbientLight );
+    
+    directionalLight = new THREE.DirectionalLight( 0x888888, 0.8 );
+    scene.add( directionalLight );
+    scene.add( directionalLight.target );
+    
+    // this light used when soft ambient light and directional light are disabled
+    hardAmbientLight = new THREE.AmbientLight( 0xFFFFFF );
+	scene.add( hardAmbientLight );
+    hardAmbientLight.visible = false;
+    
+    camera = new THREE.PerspectiveCamera( 70, 800/600, 0.01, 100 );
+	camera.position.set(0,1,2);
+
+    directionalLight.position = camera.position
+    
+    // add background color
+    scene.background = new THREE.Color( 0xcccccc );
+
+    // controls
+    controls = new THREE.OrbitControls( camera, renderer.domElement );
+    controls.enableKeys = false;
+    controls.enablePan = false;
+    
+    // including grid for sense of spatial orientation
+    var size = 20;
+    var divisions = 20;
+    gridHelper = new THREE.GridHelper( size, divisions );
+    scene.add( gridHelper );
+    
+    // including axes for sense of spatial orientation
+    axesHelper = new THREE.Object3D();
+    scene.add( axesHelper );
+    let axisGeometry = new THREE.CylinderGeometry(0.02, 0.02, 4, 16);
+    let xAxis = new THREE.Mesh( axisGeometry, new THREE.MeshBasicMaterial({color: 0xFF0000}) );
+    let yAxis = new THREE.Mesh( axisGeometry, new THREE.MeshBasicMaterial({color: 0x00CC00}) );
+    let zAxis = new THREE.Mesh( axisGeometry, new THREE.MeshBasicMaterial({color: 0x0000FF}) );
+    xAxis.rotateZ(Math.PI / 2);
+    zAxis.rotateX(Math.PI / 2);
+    axesHelper.add(xAxis);
+    axesHelper.add(yAxis);
+    axesHelper.add(zAxis);
+    
+	// including sphere to occlude part of curve
+    sphereGeometry = new THREE.SphereGeometry( 1, 64,64 );
+    sphereMaterial = new THREE.MeshLambertMaterial( {color: 0xCCCCFF, transparent:true, opacity:1.00 } );
+	sphereMesh = new THREE.Mesh( sphereGeometry, sphereMaterial );
+	scene.add( sphereMesh );
+}
+
+
+function animate() 
+{
+	requestAnimationFrame( animate );
+    update();
+    render();
+}
+
+function update()
+{
+    
+}
+
+function render()
+{
+    renderer.render( scene, camera );
+}
+
+
+// Global Scene Settings =================================================================
+
+$("#toggleGrid").click( function() {
+    gridHelper.visible = !gridHelper.visible;
+});
+
+$("#toggleAxes").click( function() {
+    axesHelper.visible = !axesHelper.visible;
+});
+
+$("#toggleLights").click( function() {
+    directionalLight.visible = !directionalLight.visible;
+    softAmbientLight.visible = !softAmbientLight.visible;
+    hardAmbientLight.visible = !hardAmbientLight.visible;
+});
+
+$("#toggleSphere").click( function() {
+    sphereMesh.visible = !sphereMesh.visible;
+});
+
+$("#resetCamera").click( function() {
+    camera.position.set(0,1,2);
+    camera.lookAt(0,0,0);
+    controls.target = new THREE.Vector3(0,0,0);
+});
+
+$("#sphereOpacity").slider( {value:100} );
+
+$("#sphereOpacity").on('slide', function(event, ui) {
+    sphereMaterial.opacity = ui.value / 100;
+});
+
+// palette of colors for color pickers
+var paletteColors = [
+    ["#000000","#444444","#666666","#999999","#cccccc","#eeeeee","#f3f3f3","#ffffff"],
+    ["#ff0000","#ff9900","#ffff00","#00ff00","#00ffff","#0000ff","#9900ff","#ff00ff"],
+    ["#f4cccc","#fce5cd","#fff2cc","#d9ead3","#d0e0e3","#cfe2f3","#d9d2e9","#ead1dc"],
+    ["#ea9999","#f9cb9c","#ffe599","#b6d7a8","#a2c4c9","#9fc5e8","#b4a7d6","#d5a6bd"],
+    ["#e06666","#f6b26b","#ffd966","#93c47d","#76a5af","#6fa8dc","#8e7cc3","#c27ba0"],
+    ["#cc0000","#e69138","#f1c232","#6aa84f","#45818e","#3d85c6","#674ea7","#a64d79"],
+    ["#990000","#b45f06","#bf9000","#38761d","#134f5c","#0b5394","#351c75","#741b47"],
+    ["#660000","#783f04","#7f6000","#274e13","#0c343d","#073763","#20124d","#4c1130"]
+];
+
+// apply color picker style
+$("#backgroundColor").spectrum({
+    color: "#CCCCCC",
+    showPalette: true,
+    palette: paletteColors,
+    showSelectionPalette: false,
+    cancelText: ""
+});
+
+$("#backgroundColor").on('change', function(e, color) {
+    scene.background = new THREE.Color( color.toHexString() );
+});
+
+$("#backgroundColor").on('move.spectrum', function(e, color) {
+    scene.background = new THREE.Color( color.toHexString() );
+});
+
+// apply color picker style
+$("#sphereColor").spectrum({
+    color: "#CCCCFF",
+    showPalette: true,
+    palette: paletteColors,
+    showSelectionPalette: false,
+    cancelText: ""
+});
+
+$("#sphereColor").on('change', function(e, color) {
+    sphereMaterial.color = new THREE.Color( color.toHexString() );
+});
+
+$("#sphereColor").on('move.spectrum', function(e, color) {
+    sphereMaterial.color = new THREE.Color( color.toHexString() );
+});
+
+// Adding curves and patterns ============================================
+
+$("#addCurveButton").click( function() { 
+    addCurve(); 
+});
+
+$("#addPatternButton").click( function() { 
+    addPattern(); 
+});
+
+
+// ID used to distinguish curves and patterns
+var count = 0;
+
+// simplify replacing string content
+String.prototype.replaceAll = function(search, replacement) 
+{
+    let target = this;
+    return target.split(search).join(replacement);
+};
+
+// convert abbreviated code to JS-compliant code
+function mathify(functionString)
+{
+    functionString = functionString.replaceAll("sin",  "Math.sin");
+    functionString = functionString.replaceAll("cos",  "Math.cos");
+    functionString = functionString.replaceAll("tan",  "Math.tan");
+    functionString = functionString.replaceAll("PI",   "Math.PI");
+    functionString = functionString.replaceAll("pi",   "Math.PI");
+    functionString = functionString.replaceAll("sqrt", "Math.sqrt");
+    functionString = functionString.replaceAll("abs",  "Math.abs");
+    functionString = functionString.replaceAll("acos", "Math.acos");
+    functionString = functionString.replaceAll("asin", "Math.asin");
+    functionString = functionString.replaceAll("atan", "Math.atan");
+    functionString = functionString.replaceAll("exp",  "Math.exp");
+    functionString = functionString.replaceAll("log",  "Math.log");
+    functionString = functionString.replaceAll("pow",  "Math.pow");
+    return functionString;
+}
+
+// add a new parametric curve ============================================================
+
+function addCurve()
+{
+    count += 1;
+    let c = count;
+    
+    // (1) create HTML content ===========================================================
+    
+    let presetHTML =
+        `<select id="preset${c}">
+         <option disabled selected>Preset Functions</option>
+         <option value="ring">Ring</option>
+         <option value="bands">Bands</option>         
+         <option value="lissajous">Lissajous</option>
+         <option value="star">Stars</option>         
+         </select>`;
+         
+    let layerHTML =
+        `<select id="layer${c}">
+         <option selected value="1">1</option>
+         <option value="2">2</option>
+         <option value="3">3</option>
+         <option value="4">4</option>
+         <option value="5">5</option>
+         <option value="6">6</option>
+         <option value="7">7</option>
+         <option value="8">8</option>
+         <option value="9">9</option>
+         <option value="10">10</option>
+         </select>`;
+    
+    // create new sub-table containing all data entry fields required
+    let subTableHTML = 
+        `<table class="curveData">
+        <tr>
+            <td> x(t) = <input class="regraph" type="text" size="40" id="xFunction${c}" value="cos(t)"> </td> 
+            <td class="right"> Presets: </td> 
+            <td colspan=3> ${presetHTML} </td>
+        </tr>
+        <tr>
+            <td> y(t) = <input class="regraph" type="text" size="40" id="yFunction${c}" value="0"> </td> 
+            <td class="right"> Parameters: </td> 
+            <td> A = <input class="regraph" type="text" size="4" id="A${c}" value="0"> </td>
+            <td> B = <input class="regraph" type="text" size="4" id="B${c}" value="0"> </td>
+            <td> C = <input class="regraph" type="text" size="4" id="C${c}" value="0"> </td>
+        </tr>
+        <tr>
+            <td> z(t) = <input class="regraph" type="text" size="40" id="zFunction${c}" value="sin(t)"> </td> 
+            <td class="right"> &nbsp;&nbsp;&nbsp; Rotation (deg): </td>
+            <td> X = <input class="regraph" type="text" size="4" id="RX${c}" value="0"> </td>
+            <td> Y = <input class="regraph" type="text" size="4" id="RY${c}" value="0"> </td>
+            <td> Z = <input class="regraph" type="text" size="4" id="RZ${c}" value="0"> </td>
+        </tr>
+        <tr>
+            <td class="center"> 
+                <input class="regraph" type="text" size="10" id="tMin${c}" value="0"> 
+                &le; t &le; 
+                <input class="regraph" type="text" size="10" id="tMax${c}" value="6.28">
+            </td>
+        </tr>
+        <tr>
+            <td class="center" colspan="5"> 
+                Color: <input type="text" id="color${c}" /> &nbsp;&nbsp;&nbsp;
+                Thickness (R): <input class="regraph" type="text" id="radius${c}" value="0.01"/> &nbsp;&nbsp;&nbsp;
+                Layer: ${layerHTML}
+            </td>
+        </tr>
+        <tr>
+            <td class="center" colspan="5"> 
+                <button id="graph${c}"> Graph </button> &nbsp;&nbsp;&nbsp;
+                <button id="delete${c}"> Delete </button>
+            </td>
+        </tr>
+        </table>`;
+    
+    // (2) add HTML content to page ==================================================================
+    
+    let $curveTable = $("#curveTable");
+    // build a new row containing HTML content
+    let $row = $(`<tr id="row${c}"><td> ${subTableHTML} </td></tr>`);
+    // add the new row to the curve table
+    $curveTable.append( $row );
+    
+    // (3) create corresponding THREE.Mesh based on curve data ========================================
+    
+    let curveGeometry = new THREE.Geometry();
+    let curveMaterial = new THREE.MeshLambertMaterial( {color: 0xFF8800} );
+	let curveMesh = new THREE.Mesh( curveGeometry, curveMaterial );
+    curveMesh.name = "curve mesh #" + c;
+	scene.add( curveMesh );
+    
+    // (4) add input functionality ====================================================================
+    //     (graph, presets, colors, delete)
+    
+    // apply styles and associate functions to buttons
+    let $graphButton = $("#graph" + c);
+
+    $graphButton.click( function() { 
+
+        // get data from HTML fields
+        let xFunction = $("#xFunction" + c).val();
+        let yFunction = $("#yFunction" + c).val();
+        let zFunction = $("#zFunction" + c).val();
+        let tMin      = $("#tMin" + c).val();
+        let tMax      = $("#tMax" + c).val();
+        let A  = $("#A" + c).val();
+        let B  = $("#B" + c).val();
+        let C  = $("#C" + c).val();
+        let RX = $("#RX" + c).val();
+        let RY = $("#RY" + c).val();
+        let RZ = $("#RZ" + c).val();
+        let radius = $("#radius" + c).val();
+        let layer  = parseInt( $("#layer" + c).val() );
+        let height = radius * layer;
+
+        let functionString = 
+            `let t = (1-T)*${tMin} + T*${tMax};
+             return new THREE.Vector3( ${xFunction}, ${yFunction}, ${zFunction} ).multiplyScalar(1 + ${height}); `
+
+        // append "Math." to mathematical functions
+        functionString = mathify(functionString)
+        
+        // substitute parameter values in function string
+        functionString = functionString.replaceAll("A", A);
+        functionString = functionString.replaceAll("B", B);
+        functionString = functionString.replaceAll("C", C);
+        
+        // stop "R" in "THREE" from getting replaced
+        functionString = functionString.replaceAll("THREE", "@");
+        functionString = functionString.replaceAll("R", radius);
+        functionString = functionString.replaceAll("@", "THREE");
+        
+        let curve = new THREE.Curve();
+        let f = Function("T", functionString );
+        curve.getPoint = f;
+        
+        // build a tube geometry around the curve
+        let curveGeometry = new THREE.TubeGeometry(curve, 2048, radius, 8);
+        
+        // apply rotations
+        curveGeometry.rotateX( RX * Math.PI / 180 );
+        curveGeometry.rotateY( RY * Math.PI / 180 );
+        curveGeometry.rotateZ( RZ * Math.PI / 180 );
+        
+        // dispose of previous geometric data to prevent memory leaks
+        curveMesh.geometry.dispose();
+        curveMesh.geometry = curveGeometry;
+
+    });
+    
+    // apply select menu style
+    $("#preset" + c).selectmenu();
+    
+    $("#preset" + c).on('selectmenuchange', function() {
+        let selection = this.value;
+        if (selection == "ring")
+            setCurveData(c, "cos(t)", "0", "sin(t)", 0, 6.283, 0,0,0, 0,0,0)
+        else if (selection == "lissajous")
+            setCurveData(c, "sin(A*t) * cos(B*t)", "cos(A*t)", "sin(A*t) * sin(B*t)",  0, 6.283, 15,16,0, 0,0,0)
+        else if (selection == "bands")
+            setCurveData(c, "cos(t) / sqrt(1+(t*R/pi)*(t*R/pi))", "t*(R/pi) / sqrt(1+(t*R/pi)*(t*R/pi))", "sin(t) / sqrt(1+(t*R/pi)*(t*R/pi))", "-A*pi", "A*pi", 20,0,0, 0,0,0)
+        else if (selection == "star")
+            setCurveData(c, "(1-A/B)*cos(t) + A/B*cos((1-B/A)*t)", "sqrt(4*(1-A/B)*(A/B)) * sin(B/A * t/2)", "(1-A/B)*sin(t) + A/B*sin((1-B/A)*t)",  "-2*B*pi", "2*B*pi", 3,11,0, 0,0,0)
+            
+        $graphButton.click();
+    });
+    
+    // apply color picker style
+    $("#color" + c).spectrum({
+        color: "#FF8800",
+        showPalette: true,
+        palette: paletteColors,
+        showSelectionPalette: false,
+        cancelText: ""
+    });
+
+    $("#color" + c).on('change', function(e, color) {
+        curveMaterial.color = new THREE.Color( color.toHexString() );
+    });
+    
+    $("#color" + c).on('move.spectrum', function(e, color) {
+        curveMaterial.color = new THREE.Color( color.toHexString() );
+    });
+    
+    // apply select menu style
+    $("#layer" + c).selectmenu( {width:100} );
+    $("#layer" + c).on('selectmenuchange', function() {
+        $graphButton.click();
+    });
+    
+    $("#delete" + c).click( function() { 
+
+        // remove mesh from scene
+        scene.remove(curveMesh);
+        curveMesh.geometry.dispose();
+        curveMesh.material.dispose();
+        curveMesh = undefined;
+        
+        // remove row from table
+        $row.remove();
+        
+    });
+    
+    // apply button styles
+    $("button").button();
+    
+    // graph default curve
+    $graphButton.click();
+    
+    // when pressing enter (keyCode 13) on text fields, regraph:
+    // TODO: this currently triggers other graph buttons.... adds on because applies to all elements with specific class. Add "c" to class?
+    $(".regraph").on( 'keydown', function (event) {
+        if (event.keyCode == 13)
+            $graphButton.click();
+    });
+
+}
+
+function setCurveData(c, xFunction, yFunction, zFunction, tMin, tMax, A, B, C, RX, RY, RZ)
+{
+    $("#xFunction" + c).val( xFunction );
+    $("#yFunction" + c).val( yFunction );
+    $("#zFunction" + c).val( zFunction );
+    $("#tMin" + c).val( tMin );
+    $("#tMax" + c).val( tMax );
+    $("#A" + c).val( A );
+    $("#B" + c).val( B );
+    $("#C" + c).val( C );
+    $("#RX" + c).val( RX );
+    $("#RY" + c).val( RY );
+    $("#RZ" + c).val( RZ );
+}
+</script>
+
+<script>
+
+// add a new discrete pattern ============================================================
+
+function addPattern()
+{
+    count += 1;
+    let c = count;
+    
+    // (1) create HTML content ===========================================================
+    
+    let presetHTML =
+        `<select id="preset${c}">
+         <option disabled selected>Preset Patterns</option>
+         <option value="Cube">Cube</option>
+         <option value="Tetrahedron">Tetrahedron</option>
+         <option value="Octahedron">Octahedron</option>
+         <option value="Icosahedron">Icosahedron</option>
+         <option value="Dodecahedron">Dodecahedron</option>
+         <option value="TruncatedCube">Truncated Cube</option>
+         <option value="TruncatedTetrahedron">Truncated Tetrahedron</option>
+         <option value="TruncatedOctahedron">Truncated Octahedron</option>
+         <option value="TruncatedIcosahedron">Truncated Icosahedron</option>
+         <option value="TruncatedDodecahedron">Truncated Dodecahedron</option>
+         </select>`;
+         
+    let layerHTML =
+        `<select id="layer${c}">
+         <option selected value="1">1</option>
+         <option value="2">2</option>
+         <option value="3">3</option>
+         <option value="4">4</option>
+         <option value="5">5</option>
+         <option value="6">6</option>
+         <option value="7">7</option>
+         <option value="8">8</option>
+         <option value="9">9</option>
+         <option value="10">10</option>
+         </select>`;
+
+    // create new sub-table containing all data entry fields required
+    
+    let subTableHTML = 
+        `<table class="curveData">
+         <tr><td class="right">Presets: </td><td colspan=3> ${presetHTML} </td></tr>
+         <tr><td class="right">Vertex Data: </td><td colspan=3> <textarea cols="70" rows="3" id="vertexData${c}">[[0,0,1],[1,0,0],[0,1,0],[-1,0,0],[0,-1,0],[0,0,-1]]</textarea> </td></tr>
+         <tr><td class="right">  Edge Data: </td><td colspan=3> <textarea cols="70" rows="3" id="edgeData${c}"  >[[0,1],[0,2],[0,3],[0,4],[1,2],[1,4],[1,5],[2,3],[2,5],[3,4],[3,5],[4,5]]</textarea> </td></tr>
+         
+         <tr>
+            <td class="right"> &nbsp;&nbsp;&nbsp; Rotation (deg): </td>
+            <td colspan=3>
+                &nbsp; X = <input class="regraph" type="text" size="4" id="RX${c}" value="0">
+                &nbsp;&nbsp;&nbsp; Y = <input class="regraph" type="text" size="4" id="RY${c}" value="0">
+                &nbsp;&nbsp;&nbsp; Z = <input class="regraph" type="text" size="4" id="RZ${c}" value="0"> 
+            </td>
+        </tr>
+        
+        <tr>
+            <td class="center" colspan=4> 
+                Color: <input type="text" id="color${c}" /> &nbsp;&nbsp;&nbsp;
+                Thickness: <input class="regraph" type="text" id="radius${c}" value="0.01"/> &nbsp;&nbsp;&nbsp;
+                Layer: ${layerHTML} 
+            </td>
+        </tr>
+        
+         <tr><td class="center" colspan=4> 
+            <button id="graph${c}"> Graph </button> &nbsp;&nbsp;&nbsp;
+            <button id="delete${c}"> Delete </button> 
+         </td></tr>
+         </table>`;
+
+    
+    // (2) add HTML content to page ==================================================================
+    
+    let $curveTable = $("#curveTable");
+    // build a new row containing table
+    let $row = $(`<tr id="row${c}"><td> ${subTableHTML} </td></tr>`);
+    // add the new row to the curve table
+    $curveTable.append( $row );
+    
+    // (3) create corresponding THREE.Group based on curve data ========================================
+    
+    let curveGroup = new THREE.Group();
+    let curveMaterial = new THREE.MeshLambertMaterial( {color: 0xFF8800} );
+	scene.add( curveGroup );
+    
+    // (4) add input functionality ====================================================================
+    //     (graph, presets, colors, delete)
+    
+    $("#graph" + c).click( function() {
+
+        // clear out any curve data currently stored
+        for (let i = curveGroup.children.length - 1; i >= 0; i--) 
+        {
+            curveGroup.children[i].geometry.dispose();
+            curveGroup.remove( curveGroup.children[i] );
+        }
+        
+        // get data from HTML fields
+        //   then convert from strings to arrays
+        let vertexData = JSON.parse(  $("#vertexData" + c).val() );
+        let edgeData   = JSON.parse(  $("#edgeData" + c).val()   );
+        let RX = $("#RX" + c).val();
+        let RY = $("#RY" + c).val();
+        let RZ = $("#RZ" + c).val();
+        let radius = parseFloat( $("#radius" + c).val() );
+        let layer  = parseInt( $("#layer" + c).val() );
+        let height = radius * layer;
+
+        for (let i = 0; i < edgeData.length; i++)
+        {
+            let edge = edgeData[i];    
+            
+            let pIndex = edge[0];
+            let pArray = vertexData[ pIndex ];
+            let p = new THREE.Vector3( pArray[0], pArray[1], pArray[2] ).multiplyScalar(1 + height);
+            
+            let qIndex = edge[1];
+            let qArray = vertexData[ qIndex ];
+            let q = new THREE.Vector3( qArray[0], qArray[1], qArray[2] ).multiplyScalar(1 + height);
+            
+            let arc = new THREE.Curve();
+            let angle = p.angleTo(q);
+            arc.getPoint = function(t)
+                {
+                    return new THREE.Vector3().addVectors(
+                        p.clone().multiplyScalar(Math.sin( (1 - t) * angle )) , 
+                        q.clone().multiplyScalar(Math.sin(      t  * angle )) )
+                        .divideScalar( Math.sin(angle) );
+                };
+
+            // graphing a 3D tube around the curve
+            let tubeGeometry = new THREE.TubeGeometry(arc, 128, radius, 8);
+            let tube = new THREE.Mesh( tubeGeometry, curveMaterial );
+            curveGroup.add(tube);   
+        }
+        
+        curveGroup.rotation.x = ( RX * Math.PI / 180 );
+        curveGroup.rotation.y = ( RY * Math.PI / 180 );
+        curveGroup.rotation.z = ( RZ * Math.PI / 180 );
+        
+    });
+    
+    // apply select menu style
+    $("#preset" + c).selectmenu();
+    
+    $("#preset" + c).on('selectmenuchange', function() {
+        let selection = this.value;
+        
+        // normalize and round preset data
+        let vertexData = POLYHEDRA[selection]["vertex"];
+        let edgeData   = POLYHEDRA[selection]["edge"];
+        let normalVertexData = [];
+        for (let i = 0; i < vertexData.length; i++)
+        {
+            let v = vertexData[i];
+            let magnitude = Math.sqrt( v[0]*v[0] + v[1]*v[1] + v[2]*v[2] );
+            let normalV = [ v[0] / magnitude, v[1] / magnitude, v[2] / magnitude ];
+            let roundedV = [ parseFloat(normalV[0].toFixed(3)), parseFloat(normalV[1].toFixed(3)), parseFloat(normalV[2].toFixed(3)) ];
+            normalVertexData.push(roundedV);
+        }
+
+        setPatternData(c, JSON.stringify(normalVertexData), JSON.stringify(edgeData) );
+        $("#graph" + c).click();
+    });
+    
+    // apply color picker style
+    $("#color" + c).spectrum({
+        color: "#FF8800",
+        showPalette: true,
+        palette: paletteColors,
+        showSelectionPalette: false,
+        cancelText: ""
+    });
+
+    $("#color" + c).on('change', function(e, color) {
+        curveMaterial.color = new THREE.Color( color.toHexString() );
+    });
+    
+    $("#color" + c).on('move.spectrum', function(e, color) {
+        curveMaterial.color = new THREE.Color( color.toHexString() );
+    });
+    
+    // apply select menu style
+    $("#layer" + c).selectmenu( {width:100} );
+    $("#layer" + c).on('selectmenuchange', function() {
+        $("#graph" + c).click();
+    });
+    
+    $("#delete" + c).click( function() { 
+
+        // remove mesh from scene
+        for (let i = curveGroup.children.length - 1; i >= 0; i--) 
+        {
+            curveGroup.children[i].geometry.dispose();
+            curveGroup.remove( curveGroup.children[i] );
+        }
+        scene.remove(curveGroup);
+        curveGroup = undefined;
+        
+        // remove row from table
+        $row.remove();
+    });
+    
+    // graph default curve
+    $("#graph" + c).click();
+    
+    // apply button styles
+    $("button").button();
+    
+    // when pressing enter (keyCode 13) on text fields, regraph:
+    // TODO: this currently triggers other graph buttons.... adds on because applies to all elements with specific class. Add "c" to class?
+    $(".regraph").on( 'keydown', function (event) {
+        if (event.keyCode == 13)
+            $("#graph" + c).click();
+    });
+}
+     
+function setPatternData(id, vertexData, edgeData)
+{
+    $("#vertexData" + id).val( vertexData );
+    $("#edgeData" + id).val( edgeData );
+}
+
+</script>
+
+<script>
+
+// apply jQuery formatting (e.g. font) to entire body
+$("body").addClass("ui-widget");
+
+// Set all buttons to jQuery UI style
+$("button").button();
+
+// when starting program, create initial curve data area
+//   and activate its graph button
+addCurve();
+
+</script>
+
+
+</body>
+</html>
